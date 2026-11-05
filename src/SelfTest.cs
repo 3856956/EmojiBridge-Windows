@@ -100,6 +100,25 @@ namespace EmojiBridge
             bool invalidResult = false; try { WeChatExtractor.ParseResult("{}", root); } catch { invalidResult = true; }
             Check(invalidResult, "Reject malformed component output instead of claiming success");
             Check(File.Exists(WeChatExtractor.EnginePath) && Converter.HashFile(WeChatExtractor.EnginePath) == WeChatExtractor.EngineSha256, "Bundled extraction component matches pinned SHA256");
+            string qqRoot = Path.Combine(fixtures, "Tencent Files");
+            string qqOriginals = Path.Combine(qqRoot, @"12345\nt_qq\nt_data\Emoji\personal_emoji\Ori");
+            Directory.CreateDirectory(qqOriginals);
+            Directory.CreateDirectory(Path.Combine(qqRoot, @"12345\nt_qq\nt_data\Emoji\personal_emoji\Thumb"));
+            Directory.CreateDirectory(Path.Combine(qqRoot, @"67890\nt_qq\nt_data\Pic"));
+            string extensionless = Path.Combine(qqOriginals, "favorite");
+            File.Copy(gif, extensionless);
+            var qqSources = QqStickerSource.Find(qqRoot);
+            Check(qqSources.Count == 1 && qqSources[0].Account == "12345" && qqSources[0].Directory == qqOriginals,
+                "QQ discovery isolates the favorite originals directory from thumbnails and chat pictures");
+            Check(QqStickerSource.Find(qqOriginals).Single().Directory == qqOriginals, "Accept a manually selected QQ originals directory");
+            var cached = Converter.Enumerate(new[] { qqOriginals }, delegate { }, true).Select(Converter.Inspect).Single();
+            Check(cached.Format == "GIF" && cached.Frames == 2, "Recognize an extensionless QQ animation by content");
+            var forWeChat = Converter.Export(new[] { cached }, new ExportOptions { Destination = root, Zip = true, ToWeChat = true }, delegate { });
+            Check(forWeChat.Count == 1 && forWeChat.Errors.Count == 0 && Path.GetFileName(forWeChat.Directory).StartsWith("微信表情_")
+                && File.ReadAllText(Path.Combine(forWeChat.Directory, "使用说明.txt")).Contains("我添加的表情"),
+                "WeChat export writes the matching folder, package and instructions");
+            Check(File.ReadAllBytes(Directory.GetFiles(forWeChat.Directory, "*.gif").Single()).SequenceEqual(gifBytes),
+                "QQ to WeChat export keeps the original animated GIF bytes");
             File.WriteAllText(Path.Combine(root, "test-results.json"), new JavaScriptSerializer().Serialize(new { passed = passed.Count, checks = passed }), Encoding.UTF8);
         }
     }

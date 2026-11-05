@@ -29,6 +29,7 @@ namespace EmojiBridge
         public int MaxEdge = 512;
         public bool Zip = true;
         public bool Jpeg;
+        public bool ToWeChat;
     }
 
     public sealed class ExportResult
@@ -88,7 +89,7 @@ namespace EmojiBridge
             }
         }
 
-        public static IEnumerable<string> Enumerate(IEnumerable<string> paths, Action<string> error)
+        public static IEnumerable<string> Enumerate(IEnumerable<string> paths, Action<string> error, bool detectByContents = false)
         {
             var pending = new Stack<string>(paths.Reverse());
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -101,7 +102,7 @@ namespace EmojiBridge
                 if (!visited.Add(full)) continue;
                 if (File.Exists(full))
                 {
-                    if (Extensions.Contains(System.IO.Path.GetExtension(full))) yield return full;
+                    if (detectByContents || Extensions.Contains(System.IO.Path.GetExtension(full))) yield return full;
                     else error(System.IO.Path.GetFileName(full) + "：不支持的文件类型");
                     continue;
                 }
@@ -110,7 +111,7 @@ namespace EmojiBridge
                     if (!System.IO.Directory.Exists(full)) { error(full + "：文件不存在"); continue; }
                     if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0) continue;
                     foreach (string file in System.IO.Directory.GetFiles(full))
-                        if (Extensions.Contains(System.IO.Path.GetExtension(file))) pending.Push(file);
+                        if (detectByContents || Extensions.Contains(System.IO.Path.GetExtension(file))) pending.Push(file);
                     foreach (string dir in System.IO.Directory.GetDirectories(full)) pending.Push(dir);
                 }
                 catch (Exception ex) { error(full + "：" + ex.Message); }
@@ -136,7 +137,8 @@ namespace EmojiBridge
             if (stickers.Count == 0) throw new InvalidOperationException("请先勾选表情。");
             string parent = System.IO.Path.GetFullPath(options.Destination);
             System.IO.Directory.CreateDirectory(parent);
-            string folder = System.IO.Path.Combine(parent, "QQ表情_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + Guid.NewGuid().ToString("N").Substring(0, 6));
+            string appName = options.ToWeChat ? "微信" : "QQ";
+            string folder = System.IO.Path.Combine(parent, appName + "表情_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + Guid.NewGuid().ToString("N").Substring(0, 6));
             System.IO.Directory.CreateDirectory(folder);
             var result = new ExportResult { Directory = folder };
             var manifest = new List<object>();
@@ -204,10 +206,17 @@ namespace EmojiBridge
                 }
                 progress(i + 1, System.IO.Path.GetFileName(item.Path));
             }
-            string instructions = "微信表情 → QQ\r\n\r\n1. 打开电脑版 QQ，在聊天窗口的表情面板中寻找自定义 / 收藏表情的添加入口。\r\n2. 选择本目录中的 PNG、JPG 或 GIF 图片；如文件选择框支持多选，可批量选择。\r\n3. 如果当前版本没有本地添加入口，可以手动发送图片，再右键查看是否有添加到表情的选项。\r\n\r\nQQ 版本不同，入口、数量和大小限制可能不同；本程序不直接操作 QQ 收藏，也不会自动发送消息。\r\nGIF 和动画 PNG 原样保留，不压缩、不缩放。超出 QQ 限制的动画需要另行处理。\r\n静态图按你选择的边长缩小（不放大），默认输出透明 PNG；选择 JPG 时透明区域填白。\r\nTIFF、ICO 等多页或多尺寸静态文件只使用默认图像。\r\nindex.html 是离线预览，manifest.json 是导出清单（含本机源文件路径）。分享整个压缩包前可移除清单。\r\n原始文件未修改。没有导出的文件见 errors.txt。\r\n";
+            string instructions = options.ToWeChat
+                ? "QQ 表情 → 微信\r\n\r\n打开微信聊天窗口的表情面板，进入「我添加的表情」，通过「+」选择导出的图片（如果当前电脑版提供该入口）。\r\n也可把图片存到手机相册，再用手机微信「我添加的表情 → +」逐张添加。\r\n"
+                : "微信表情 → QQ\r\n\r\n打开电脑版 QQ 的表情面板，通过自定义 / 收藏表情中的添加入口选择导出的图片。文件选择框支持多选时可以批量选择。\r\n";
+            instructions += "\r\n添加入口、数量和文件大小限制取决于" + appName + "版本。\r\n"
+                + "GIF 和动画 PNG 原样保留。超出目标应用限制的动画需要另行处理。\r\n"
+                + "静态图按你选择的边长缩小，默认输出透明 PNG。选择 JPG 时透明区域填白。\r\n"
+                + "index.html 是离线预览，manifest.json 是导出清单（含本机源文件路径）。分享前可移除清单。\r\n"
+                + "没有导出的文件见 errors.txt。\r\n";
             File.WriteAllText(System.IO.Path.Combine(folder, "使用说明.txt"), instructions, new UTF8Encoding(true));
             File.WriteAllText(System.IO.Path.Combine(folder, "manifest.json"), new JavaScriptSerializer().Serialize(manifest), Encoding.UTF8);
-            File.WriteAllText(System.IO.Path.Combine(folder, "index.html"), "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>QQ 表情预览</title><style>body{font:16px 'Microsoft YaHei',sans-serif;background:#f4f7fb;color:#182b44;margin:40px}h1{font-size:26px}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}figure{margin:0;background:white;padding:18px;border-radius:16px;text-align:center}img{width:140px;height:140px;object-fit:contain}figcaption{font-size:12px;overflow-wrap:anywhere;color:#57677c;margin-top:12px}</style><h1>你的表情，准备好了。</h1><p>共 " + result.Count + " 张 · 图片在本目录中，回到 QQ 手动添加。</p><main>" + gallery + "</main></html>", Encoding.UTF8);
+            File.WriteAllText(System.IO.Path.Combine(folder, "index.html"), "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>" + appName + "表情预览</title><style>body{font:16px 'Microsoft YaHei',sans-serif;background:#f4f7fb;color:#182b44;margin:40px}h1{font-size:26px}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}figure{margin:0;background:white;padding:18px;border-radius:16px;text-align:center}img{width:140px;height:140px;object-fit:contain}figcaption{font-size:12px;overflow-wrap:anywhere;color:#57677c;margin-top:12px}</style><h1>你的表情，准备好了。</h1><p>共 " + result.Count + " 张 · 图片在本目录中，可在" + appName + "手动添加。</p><main>" + gallery + "</main></html>", Encoding.UTF8);
             if (result.Errors.Count > 0) File.WriteAllLines(System.IO.Path.Combine(folder, "errors.txt"), result.Errors, Encoding.UTF8);
             if (options.Zip && result.Count > 0)
             {
@@ -230,7 +239,7 @@ namespace EmojiBridge
         PictureBox preview;
         MemoryStream previewStream;
         Label subtitle, summary, previewInfo, status, previewEmpty;
-        ComboBox sizes, formats;
+        ComboBox sizes, formats, targetApp;
         TextBox destination;
         CheckBox zip;
         ProgressBar progress;
@@ -240,7 +249,7 @@ namespace EmojiBridge
 
         public MainForm()
         {
-            Text = "表情搬家 · 微信 → QQ";
+            Text = "表情搬家 · 微信 ↔ QQ";
             Font = new Font("Microsoft YaHei UI", 9F);
             ForeColor = Ink;
             BackColor = Color.FromArgb(244, 247, 251);
@@ -264,8 +273,8 @@ namespace EmojiBridge
 
             var header = new Panel { Dock = DockStyle.Fill };
             header.Controls.Add(new Label { Text = "表情搬家", Font = new Font(Font.FontFamily, 25, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0) });
-            header.Controls.Add(new Label { Text = "微信  →  QQ", Font = new Font(Font.FontFamily, 12, FontStyle.Bold), ForeColor = Blue, AutoSize = true, Location = new Point(177, 16) });
-            subtitle = new Label { Text = "从电脑版微信提取「我添加的表情」，预览整理后带到 QQ。", AutoSize = true, ForeColor = Muted, Location = new Point(2, 53) };
+            header.Controls.Add(new Label { Text = "微信  ↔  QQ", Font = new Font(Font.FontFamily, 12, FontStyle.Bold), ForeColor = Blue, AutoSize = true, Location = new Point(177, 16) });
+            subtitle = new Label { Text = "从微信或 QQ 提取收藏表情，看图挑选后导出。", AutoSize = true, ForeColor = Muted, Location = new Point(2, 53) };
             header.Controls.Add(subtitle);
             var badge = new Label { Text = "●  本地读取 · 图片按需下载", ForeColor = Color.FromArgb(25, 128, 91), AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right };
             header.Controls.Add(badge);
@@ -274,11 +283,10 @@ namespace EmojiBridge
 
             var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 7, 0, 0) };
             toolbar.Controls.Add(MakeButton("从微信提取", ExtractWeChat, true, 125));
+            toolbar.Controls.Add(MakeButton("从 QQ 提取", ExtractQq, true, 125));
             toolbar.Controls.Add(MakeButton("＋ 添加图片", delegate { using (var dlg = new OpenFileDialog { Filter = "图片 / 动图|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff;*.ico", Multiselect = true, Title = "选择已保存的微信表情" }) { if (dlg.ShowDialog(this) == DialogResult.OK) Import(dlg.FileNames); } }, false, 125));
             toolbar.Controls.Add(MakeButton("添加文件夹", delegate { using (var dlg = new FolderBrowserDialog { Description = "选择表情所在文件夹（包括子文件夹）" }) { if (dlg.ShowDialog(this) == DialogResult.OK) Import(new[] { dlg.SelectedPath }); } }, false, 110));
             toolbar.Controls.Add(MakeButton("看图挑选…", delegate { PickStickers(); }, false, 105));
-            toolbar.Controls.Add(MakeButton("全选", delegate { foreach (ListViewItem item in list.Items) item.Checked = true; }, false, 68));
-            toolbar.Controls.Add(MakeButton("反选", delegate { foreach (ListViewItem item in list.Items) item.Checked = !item.Checked; }, false, 68));
             toolbar.Controls.Add(MakeButton("移除勾选", RemoveSelected, false, 105));
             toolbar.Controls.Add(MakeButton("使用帮助", ShowHelp, false, 95));
             layout.Controls.Add(toolbar, 0, 1);
@@ -313,19 +321,22 @@ namespace EmojiBridge
             settings.RowStyles.Add(new RowStyle(SizeType.Absolute, 33)); settings.RowStyles.Add(new RowStyle(SizeType.Absolute, 33)); settings.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             settings.Controls.Add(new Label { Text = "02  导出设置", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
             var formatFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            targetApp = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, AccessibleName = "导出目标" };
+            targetApp.Items.AddRange(new object[] { "导出给 QQ", "导出给微信" });
+            targetApp.SelectedIndex = 0;
             formats = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 }; formats.Items.AddRange(new object[] { "PNG · 保留透明", "JPG · 白色背景" }); formats.SelectedIndex = 0;
             sizes = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 }; sizes.Items.AddRange(new object[] { "原始尺寸", "最长边 512", "最长边 256", "最长边 128" }); sizes.SelectedIndex = 1;
-            formatFlow.Controls.Add(formats); formatFlow.Controls.Add(sizes); settings.Controls.Add(formatFlow, 1, 0); settings.SetColumnSpan(formatFlow, 2);
+            formatFlow.Controls.Add(targetApp); formatFlow.Controls.Add(formats); formatFlow.Controls.Add(sizes); settings.Controls.Add(formatFlow, 1, 0); settings.SetColumnSpan(formatFlow, 2);
             zip = new CheckBox { Text = "同时打包 ZIP", Checked = true, Dock = DockStyle.Fill }; settings.Controls.Add(zip, 3, 0);
             settings.Controls.Add(new Label { Text = "保存到", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 1);
             destination = new TextBox { Dock = DockStyle.Fill, Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "表情搬家") };
             settings.Controls.Add(destination, 1, 1); settings.SetColumnSpan(destination, 2);
             var browse = MakeButton("选择目录…", delegate { using (var dlg = new FolderBrowserDialog { Description = "选择导出目录", SelectedPath = destination.Text }) { if (dlg.ShowDialog(this) == DialogResult.OK) destination.Text = dlg.SelectedPath; } }, false, 110);
             browse.Height = 27; settings.Controls.Add(browse, 3, 1);
-            var note = new Label { Text = "静态图可缩小；GIF / 动画 PNG 原样保留。完成后需要在 QQ 中手动添加。", ForeColor = Muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            var note = new Label { Text = "静态图可缩小，GIF / 动画 PNG 原样保留。导出后在目标应用的表情面板添加。", ForeColor = Muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
             settings.Controls.Add(note, 0, 2); settings.SetColumnSpan(note, 4);
             layout.Controls.Add(settings, 0, 3);
-            lockWhileBusy.Add(formats); lockWhileBusy.Add(sizes); lockWhileBusy.Add(zip); lockWhileBusy.Add(destination); lockWhileBusy.Add(list);
+            lockWhileBusy.Add(targetApp); lockWhileBusy.Add(formats); lockWhileBusy.Add(sizes); lockWhileBusy.Add(zip); lockWhileBusy.Add(destination); lockWhileBusy.Add(list);
 
             var footer = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(0, 12, 0, 0) };
             export = MakeButton("导出勾选表情 →", Export, true, 180);
@@ -334,7 +345,7 @@ namespace EmojiBridge
             footer.Controls.Add(MakeButton("查看处理记录", delegate { MessageBox.Show(this, importErrors.Count == 0 ? "暂无错误记录。" : string.Join("\r\n", importErrors.Take(60).ToArray()) + (importErrors.Count > 60 ? "\r\n（仅显示前 60 条）" : ""), "处理记录", MessageBoxButtons.OK, MessageBoxIcon.Information); }, false, 130));
             layout.Controls.Add(footer, 0, 4);
             var statusPanel = new Panel { Dock = DockStyle.Fill };
-            status = new Label { Text = "就绪 · 点击「从微信提取」开始，需要先登录电脑版微信", Dock = DockStyle.Fill, ForeColor = Muted, AutoEllipsis = true };
+            status = new Label { Text = "就绪 · 选择「从微信提取」或「从 QQ 提取」开始", Dock = DockStyle.Fill, ForeColor = Muted, AutoEllipsis = true };
             progress = new ProgressBar { Dock = DockStyle.Right, Width = 160, Height = 14, Visible = false };
             statusPanel.Controls.Add(status); statusPanel.Controls.Add(progress); layout.Controls.Add(statusPanel, 0, 5);
         }
@@ -403,7 +414,7 @@ namespace EmojiBridge
             if (previewStream != null) { previewStream.Dispose(); previewStream = null; }
         }
 
-        void Import(string[] paths, bool openPicker = false)
+        void Import(string[] paths, bool openPicker = false, bool detectByContents = false)
         {
             if (busy || paths == null || paths.Length == 0) return;
             SetBusy(true); progress.Style = ProgressBarStyle.Marquee; status.Text = "正在识别图片并去重…";
@@ -412,7 +423,7 @@ namespace EmojiBridge
             worker.DoWork += delegate(object sender, DoWorkEventArgs e)
             {
                 var added = new List<Sticker>(); var errors = new List<string>(); int duplicates = 0;
-                foreach (string path in Converter.Enumerate(paths, errors.Add))
+                foreach (string path in Converter.Enumerate(paths, errors.Add, detectByContents))
                 {
                     try { var item = Converter.Inspect(path); if (existing.Add(item.Hash)) added.Add(item); else duplicates++; }
                     catch (Exception ex) { errors.Add(System.IO.Path.GetFileName(path) + "：无法读取图片（" + ex.Message + "）"); }
@@ -448,8 +459,19 @@ namespace EmojiBridge
                 {
                     lastExport = dialog.ExtractedDirectory;
                     open.Enabled = true;
+                    targetApp.SelectedIndex = 0;
                     Import(new[] { dialog.ExtractedDirectory }, true);
                 }
+            }
+        }
+
+        void ExtractQq(object sender, EventArgs args)
+        {
+            using (var dialog = new QqSourcePicker())
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK || dialog.Source == null) return;
+                targetApp.SelectedIndex = 1;
+                Import(new[] { dialog.Source.Directory }, true, true);
             }
         }
 
@@ -481,7 +503,7 @@ namespace EmojiBridge
             if (selected.Count == 0) { MessageBox.Show(this, "请添加并勾选要导出的表情。", "还没有选择表情"); return; }
             string path = destination.Text.Trim();
             if (path.Length == 0) { MessageBox.Show(this, "请先选择导出目录。", "选择目录"); return; }
-            var options = new ExportOptions { Destination = path, MaxEdge = new[] { 0, 512, 256, 128 }[sizes.SelectedIndex], Zip = zip.Checked, Jpeg = formats.SelectedIndex == 1 };
+            var options = new ExportOptions { Destination = path, MaxEdge = new[] { 0, 512, 256, 128 }[sizes.SelectedIndex], Zip = zip.Checked, Jpeg = formats.SelectedIndex == 1, ToWeChat = targetApp.SelectedIndex == 1 };
             SetBusy(true); progress.Style = ProgressBarStyle.Continuous; progress.Maximum = selected.Count; progress.Value = 0; status.Text = "正在导出…";
             var worker = new BackgroundWorker { WorkerReportsProgress = true };
             worker.DoWork += delegate(object s, DoWorkEventArgs e) { e.Result = Converter.Export(selected, options, delegate(int count, string file) { worker.ReportProgress(count, file); }); };
@@ -492,7 +514,8 @@ namespace EmojiBridge
                 if (e.Error != null) { status.Text = "导出未完成：" + e.Error.Message; MessageBox.Show(this, e.Error.Message, "导出未完成", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
                 var result = (ExportResult)e.Result; lastExport = result.Directory; open.Enabled = true; importErrors.AddRange(result.Errors);
                 status.Text = "已导出 " + result.Count + " 张 · 原样保留 " + result.Preserved + " 张 · 失败 / 提示 " + result.Errors.Count + " 条";
-                MessageBox.Show(this, "成功导出 " + result.Count + " 张表情。\r\n\r\n" + result.Directory + (result.ZipPath != null ? "\r\n已同时生成 ZIP 压缩包。" : "") + "\r\n\r\n下一步：打开导出目录，在 QQ 的表情面板中手动添加图片。" + (result.Errors.Count > 0 ? "\r\n有文件未完成，请查看处理记录。" : ""), "导出完成", MessageBoxButtons.OK, result.Count > 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                string target = options.ToWeChat ? "微信「我添加的表情」" : "QQ 收藏表情";
+                MessageBox.Show(this, "成功导出 " + result.Count + " 张表情。\r\n\r\n" + result.Directory + (result.ZipPath != null ? "\r\n已同时生成 ZIP 压缩包。" : "") + "\r\n\r\n打开导出目录，在" + target + "中手动添加图片。" + (result.Errors.Count > 0 ? "\r\n有文件未完成，请查看处理记录。" : ""), "导出完成", MessageBoxButtons.OK, result.Count > 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
                 worker.Dispose();
             };
             worker.RunWorkerAsync();
@@ -500,7 +523,7 @@ namespace EmojiBridge
 
         void ShowHelp(object sender, EventArgs args)
         {
-            MessageBox.Show(this, "1  登录电脑版微信 4.x，打开一次「我添加的表情」面板。\r\n2  点击「从微信提取」，选择账号并开始提取。\r\n3  提取完成后导入列表，勾选整理，再导出给 QQ 使用。\r\n\r\n提取时仅读取表情数据库和微信运行内存中的对应解密信息，不读取聊天记录。图片会从数据库记录的微信 CDN 地址下载；临时密钥缓存结束后清理。\r\n\r\n也可以直接添加图片 / 文件夹。支持 PNG / JPG / GIF / BMP / TIFF / ICO。GIF / 动画 PNG 保留原文件。提取到的 WebP 会保留在提取目录，但暂不能在此转换。\r\n\r\n在 QQ 表情面板中手动添加导出的图片，入口和限制因版本不同。程序不自动登录或发送消息，不直接修改微信 / QQ 收藏。", "怎么把微信表情带到 QQ", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "微信 → QQ\r\n登录电脑版微信 4.x 并打开「我添加的表情」。点击「从微信提取」，选择账号，完成后导入主窗口。\r\n\r\nQQ → 微信\r\n点击「从 QQ 提取」，选择 QQ 账号或收藏表情原图目录。缺少表情时，在 QQ 收藏表情面板滚动加载后重新提取。\r\n\r\n看图勾选后导出，再到目标应用的收藏表情面板添加。也可以直接导入 PNG、JPG、GIF、BMP、TIFF 或 ICO。GIF / 动画 PNG 保留原文件。", "表情搬家使用帮助", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         protected override void Dispose(bool disposing)
