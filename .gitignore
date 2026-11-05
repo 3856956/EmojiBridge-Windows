@@ -1,0 +1,10 @@
+test-output*/
+self-test-error.txt
+last-extraction.json
+微信表情/
+third_party/source/
+third_party/*.zip
+third_party/wxemoticon/
+/android/
+EmojiBridge.exe
+EmojiBridge-Windows.zip

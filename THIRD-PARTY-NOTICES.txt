@@ -1,0 +1,30 @@
+wxemoticon 0.3.0 - by liusheng22 and contributors
+
+Source: https://github.com/liusheng22/export-wechat-emoji/tree/v0.3.0/cli
+Release: https://github.com/liusheng22/export-wechat-emoji/releases/tag/v0.3.0
+License declared in cli/Cargo.toml: MIT
+Binary: third_party/wxemoticon/wxemoticon.exe (unmodified upstream Windows x64 build)
+Release ZIP SHA256: ceb10c0b2052716cc493e5446d3cb59d1b3090d2b64014ad6ddc7b3b28a033d0
+Executable SHA256: be1eb21cd8809fcfe386f2333c4bc420ba7b0e694142586ee159fcb238f0259f
+
+MIT License
+
+Copyright (c) liusheng22 and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
